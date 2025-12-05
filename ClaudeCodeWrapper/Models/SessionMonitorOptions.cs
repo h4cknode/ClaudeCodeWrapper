@@ -49,18 +49,19 @@ public class SessionMonitorOptions
 
     /// <summary>
     /// Derives the project directory from the working directory.
-    /// Claude sanitizes paths by replacing /, \, and . with -
+    /// Claude sanitizes paths by replacing /, \, ., and _ with -
     /// </summary>
     public string? GetDerivedProjectPath()
     {
         if (string.IsNullOrEmpty(WorkingDirectory))
             return null;
 
-        // Claude sanitizes paths: /Users/ordis/Project.Name/... -> -Users-ordis-Project-Name-...
+        // Claude sanitizes paths: /Users/ordis/Project.Name/_repo -> -Users-ordis-Project-Name--repo
         var sanitizedPath = WorkingDirectory
             .Replace("/", "-")
             .Replace("\\", "-")
-            .Replace(".", "-");
+            .Replace(".", "-")
+            .Replace("_", "-");
         return Path.Combine(GetClaudeProjectsPath(), sanitizedPath);
     }
 }
