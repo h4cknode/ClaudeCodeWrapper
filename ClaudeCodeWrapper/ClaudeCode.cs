@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
+using ClaudeCodeWrapper.Core;
 using ClaudeCodeWrapper.Formatters;
 using ClaudeCodeWrapper.Models;
+using ClaudeCodeWrapper.Models.Records;
 using ClaudeCodeWrapper.Services;
 using ClaudeCodeWrapper.Utilities;
 
@@ -152,7 +154,35 @@ public class ClaudeCode : IDisposable
         var errors = new System.Collections.Concurrent.ConcurrentBag<Exception>();
 
         monitor.Error += (_, ex) => errors.Add(ex);
-        using var subscription = monitor.Subscribe(a => onActivity(Activity.From(a)));
+        using var subscription = monitor.Subscribe(record =>
+        {
+            foreach (var activity in Activity.FromRecord(record))
+                onActivity(activity);
+        });
+
+        monitor.Start();
+        var result = await SendAsync(prompt, cancellationToken);
+        await Task.Delay(FinalEventsDelayMs, cancellationToken);
+
+        if (!errors.IsEmpty)
+            throw new AggregateException("Errors occurred during monitoring", errors);
+
+        return result;
+    }
+
+    /// <summary>
+    /// Send a prompt and stream raw session records in real-time.
+    /// </summary>
+    public async Task<string> StreamRecordsAsync(
+        string prompt,
+        Action<SessionRecord> onRecord,
+        CancellationToken cancellationToken = default)
+    {
+        using var monitor = CreateMonitor();
+        var errors = new System.Collections.Concurrent.ConcurrentBag<Exception>();
+
+        monitor.Error += (_, ex) => errors.Add(ex);
+        using var subscription = monitor.Subscribe(onRecord);
 
         monitor.Start();
         var result = await SendAsync(prompt, cancellationToken);
@@ -176,7 +206,35 @@ public class ClaudeCode : IDisposable
         var errors = new System.Collections.Concurrent.ConcurrentBag<Exception>();
 
         monitor.Error += (_, ex) => errors.Add(ex);
-        using var subscription = monitor.Subscribe(a => onActivity(Activity.From(a)));
+        using var subscription = monitor.Subscribe(record =>
+        {
+            foreach (var activity in Activity.FromRecord(record))
+                onActivity(activity);
+        });
+
+        monitor.Start();
+        var result = await SendWithResponseAsync(prompt, cancellationToken);
+        await Task.Delay(FinalEventsDelayMs, cancellationToken);
+
+        if (!errors.IsEmpty)
+            throw new AggregateException("Errors occurred during monitoring", errors);
+
+        return result;
+    }
+
+    /// <summary>
+    /// Send a prompt, stream raw session records, and get detailed response.
+    /// </summary>
+    public async Task<Response> StreamRecordsWithResponseAsync(
+        string prompt,
+        Action<SessionRecord> onRecord,
+        CancellationToken cancellationToken = default)
+    {
+        using var monitor = CreateMonitor();
+        var errors = new System.Collections.Concurrent.ConcurrentBag<Exception>();
+
+        monitor.Error += (_, ex) => errors.Add(ex);
+        using var subscription = monitor.Subscribe(onRecord);
 
         monitor.Start();
         var result = await SendWithResponseAsync(prompt, cancellationToken);
@@ -200,13 +258,16 @@ public class ClaudeCode : IDisposable
         var errors = new System.Collections.Concurrent.ConcurrentBag<Exception>();
 
         monitor.Error += (_, ex) => errors.Add(ex);
-        using var subscription = monitor.Subscribe(activity =>
+        using var subscription = monitor.Subscribe(record =>
         {
-            _ = Task.Run(async () =>
+            foreach (var activity in Activity.FromRecord(record))
             {
-                try { await onActivityAsync(Activity.From(activity)); }
-                catch (Exception ex) { errors.Add(ex); }
-            }, cancellationToken);
+                _ = Task.Run(async () =>
+                {
+                    try { await onActivityAsync(activity); }
+                    catch (Exception ex) { errors.Add(ex); }
+                }, cancellationToken);
+            }
         });
 
         monitor.Start();
@@ -222,6 +283,51 @@ public class ClaudeCode : IDisposable
     #endregion
 
     #region Session Management
+
+    /// <summary>
+    /// Get a session repository for loading complete sessions.
+    /// </summary>
+    public SessionRepository GetSessionRepository()
+    {
+        return new SessionRepository();
+    }
+
+    /// <summary>
+    /// Load a complete session with all related data.
+    /// </summary>
+    public async Task<Session?> LoadSessionAsync(
+        string sessionId,
+        CancellationToken cancellationToken = default)
+    {
+        var repository = GetSessionRepository();
+        return await repository.LoadSessionAsync(sessionId, cancellationToken);
+    }
+
+    /// <summary>
+    /// List all sessions for a project path.
+    /// </summary>
+    public IEnumerable<SessionInfo> ListSessions(string? projectPath = null)
+    {
+        var repository = GetSessionRepository();
+        return repository.ListSessions(projectPath);
+    }
+
+    /// <summary>
+    /// Send a prompt and get the complete session object after execution.
+    /// </summary>
+    public async Task<(string Result, Session? Session)> SendWithSessionAsync(
+        string prompt,
+        CancellationToken cancellationToken = default)
+    {
+        using var monitor = CreateMonitor();
+
+        monitor.Start();
+        var result = await SendAsync(prompt, cancellationToken);
+        await Task.Delay(FinalEventsDelayMs, cancellationToken);
+
+        var session = await monitor.GetSessionAsync(cancellationToken);
+        return (result, session);
+    }
 
     /// <summary>
     /// Resume a previous session.

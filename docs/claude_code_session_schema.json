@@ -1,0 +1,478 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Claude Code Session Schema",
+  "description": "Complete schema for Claude Code session files (.jsonl). Extracted from 19,246 records across 443 session files.",
+  "version": "1.0.0",
+  "claude_code_versions": ["2.0.46", "2.0.65"],
+  "generated": "2025-12-14",
+
+  "file_location": {
+    "path": "~/.claude/projects/<encoded-project-path>/",
+    "format": "JSONL (JSON Lines)",
+    "encoding": "UTF-8",
+    "naming": {
+      "main_session": "<session-uuid>.jsonl",
+      "sub_agent": "agent-<7-char-id>.jsonl"
+    },
+    "path_encoding": "Forward slashes replaced with hyphens (e.g., /Users/name/project -> -Users-name-project)"
+  },
+
+  "record_types": {
+    "user": {
+      "description": "User messages and tool results",
+      "count": 7023,
+      "required": ["type", "timestamp", "sessionId", "uuid", "message"],
+      "optional": ["parentUuid", "cwd", "gitBranch", "version", "userType", "isSidechain", "agentId", "slug", "toolUseResult", "thinkingMetadata", "todos", "isMeta", "isVisibleInTranscriptOnly", "isCompactSummary"]
+    },
+    "assistant": {
+      "description": "AI responses and tool calls",
+      "count": 11077,
+      "required": ["type", "timestamp", "sessionId", "uuid", "message"],
+      "optional": ["parentUuid", "cwd", "gitBranch", "version", "userType", "isSidechain", "agentId", "slug", "requestId", "isApiErrorMessage", "error"]
+    },
+    "queue-operation": {
+      "description": "Queue management operations",
+      "count": 120,
+      "required": ["type", "timestamp", "sessionId", "operation"],
+      "optional": ["content"]
+    },
+    "summary": {
+      "description": "Conversation summaries for context management",
+      "count": 62,
+      "required": ["type", "summary", "leafUuid"],
+      "optional": ["timestamp", "sessionId"]
+    },
+    "file-history-snapshot": {
+      "description": "File backups for checkpointing/undo",
+      "count": 921,
+      "required": ["type", "messageId", "isSnapshotUpdate", "snapshot"],
+      "optional": []
+    },
+    "system": {
+      "description": "System messages and metadata",
+      "count": 43,
+      "required": ["type", "timestamp", "sessionId", "uuid", "subtype", "content"],
+      "optional": ["parentUuid", "cwd", "gitBranch", "version", "userType", "isSidechain", "level", "isMeta", "slug", "logicalParentUuid", "compactMetadata"]
+    }
+  },
+
+  "field_definitions": {
+    "common": {
+      "type": { "type": "string", "description": "Record type identifier" },
+      "timestamp": { "type": "string", "format": "ISO 8601", "example": "2025-12-14T15:14:05.169Z" },
+      "sessionId": { "type": "string", "format": "UUID", "description": "Session identifier" },
+      "uuid": { "type": "string", "format": "UUID", "description": "Unique message identifier" },
+      "parentUuid": { "type": "string|null", "description": "Parent message UUID for threading" },
+      "cwd": { "type": "string", "description": "Current working directory" },
+      "gitBranch": { "type": "string", "description": "Current git branch" },
+      "version": { "type": "string", "description": "Claude Code version", "example": "2.0.65" },
+      "userType": { "type": "string", "enum": ["external", "internal"] },
+      "isSidechain": { "type": "boolean", "description": "True if sub-agent message" },
+      "agentId": { "type": "string", "description": "7-character agent ID for sub-agents" },
+      "slug": { "type": "string", "description": "Human-readable session name", "example": "sunny-frolicking-penguin" },
+      "requestId": { "type": "string", "description": "API request ID", "example": "req_011CW6oCZuEpkL5sM8hpedME" }
+    }
+  },
+
+  "message_structure": {
+    "user_message": {
+      "role": "user",
+      "content": {
+        "type": "string | array",
+        "description": "Plain text string OR array of tool_result blocks"
+      }
+    },
+    "assistant_message": {
+      "model": { "type": "string", "example": "claude-opus-4-5-20251101" },
+      "id": { "type": "string", "example": "msg_01VwsxSShLhe49u4m9myiYzq" },
+      "type": "message",
+      "role": "assistant",
+      "content": { "type": "array", "items": "ContentBlock" },
+      "stop_reason": { "type": "string|null", "enum": ["end_turn", "tool_use", null] },
+      "stop_sequence": { "type": "string|null" },
+      "usage": { "$ref": "#/usage_object" },
+      "context_management": { "type": "object|null" }
+    }
+  },
+
+  "content_block_types": {
+    "text": {
+      "description": "Plain text response",
+      "count": 3513,
+      "schema": {
+        "type": "text",
+        "text": { "type": "string" }
+      }
+    },
+    "thinking": {
+      "description": "Extended thinking block",
+      "count": 1853,
+      "schema": {
+        "type": "thinking",
+        "thinking": { "type": "string" }
+      }
+    },
+    "tool_use": {
+      "description": "Tool invocation",
+      "count": 5978,
+      "schema": {
+        "type": "tool_use",
+        "id": { "type": "string", "example": "toolu_01Y4R48cFT6ZLjErTmqXPXJh" },
+        "name": { "type": "string", "description": "Tool name" },
+        "input": { "type": "object", "description": "Tool-specific parameters" },
+        "signature": { "type": "string", "description": "Optional tool call signature" }
+      }
+    },
+    "tool_result": {
+      "description": "Tool execution result",
+      "count": 5971,
+      "schema": {
+        "type": "tool_result",
+        "tool_use_id": { "type": "string", "description": "Matching tool_use ID" },
+        "content": { "type": "string|array" },
+        "is_error": { "type": "boolean" }
+      }
+    },
+    "image": {
+      "description": "Image content",
+      "count": 66,
+      "schema": {
+        "type": "image",
+        "source": {
+          "type": "base64",
+          "media_type": { "type": "string", "example": "image/png" },
+          "data": { "type": "string", "format": "base64" }
+        }
+      }
+    }
+  },
+
+  "usage_object": {
+    "input_tokens": { "type": "integer" },
+    "output_tokens": { "type": "integer" },
+    "cache_creation_input_tokens": { "type": "integer" },
+    "cache_read_input_tokens": { "type": "integer" },
+    "service_tier": { "type": "string|null", "example": "standard" },
+    "cache_creation": {
+      "ephemeral_5m_input_tokens": { "type": "integer" },
+      "ephemeral_1h_input_tokens": { "type": "integer" }
+    },
+    "server_tool_use": {
+      "web_search_requests": { "type": "integer" },
+      "web_fetch_requests": { "type": "integer" }
+    }
+  },
+
+  "tools": {
+    "file_operations": {
+      "Read": {
+        "description": "Read file contents",
+        "count": 1358,
+        "input": {
+          "file_path": { "type": "string", "required": true },
+          "offset": { "type": "integer", "required": false },
+          "limit": { "type": "integer", "required": false }
+        }
+      },
+      "Write": {
+        "description": "Write/create file",
+        "count": 172,
+        "input": {
+          "file_path": { "type": "string", "required": true },
+          "content": { "type": "string", "required": true }
+        }
+      },
+      "Edit": {
+        "description": "Edit file with string replacement",
+        "count": 1035,
+        "input": {
+          "file_path": { "type": "string", "required": true },
+          "old_string": { "type": "string", "required": true },
+          "new_string": { "type": "string", "required": true },
+          "replace_all": { "type": "boolean", "required": false }
+        }
+      },
+      "Glob": {
+        "description": "Find files by pattern",
+        "count": 319,
+        "input": {
+          "pattern": { "type": "string", "required": true },
+          "path": { "type": "string", "required": false }
+        }
+      },
+      "Grep": {
+        "description": "Search file contents",
+        "count": 369,
+        "input": {
+          "pattern": { "type": "string", "required": true },
+          "path": { "type": "string", "required": false },
+          "glob": { "type": "string", "required": false },
+          "type": { "type": "string", "required": false },
+          "output_mode": { "type": "string", "enum": ["content", "files_with_matches", "count"] },
+          "-A": { "type": "integer", "description": "Lines after match" },
+          "-B": { "type": "integer", "description": "Lines before match" },
+          "-C": { "type": "integer", "description": "Context lines" },
+          "-i": { "type": "boolean", "description": "Case insensitive" },
+          "-n": { "type": "boolean", "description": "Show line numbers" },
+          "head_limit": { "type": "integer" },
+          "offset": { "type": "integer" },
+          "multiline": { "type": "boolean" }
+        }
+      },
+      "NotebookEdit": {
+        "description": "Edit Jupyter notebook cells",
+        "input": {
+          "notebook_path": { "type": "string", "required": true },
+          "new_source": { "type": "string", "required": true },
+          "cell_id": { "type": "string", "required": false },
+          "cell_type": { "type": "string", "enum": ["code", "markdown"] },
+          "edit_mode": { "type": "string", "enum": ["replace", "insert", "delete"] }
+        }
+      }
+    },
+    "shell_operations": {
+      "Bash": {
+        "description": "Execute shell command",
+        "count": 2037,
+        "input": {
+          "command": { "type": "string", "required": true },
+          "description": { "type": "string", "required": false },
+          "timeout": { "type": "integer", "required": false },
+          "run_in_background": { "type": "boolean", "required": false }
+        }
+      },
+      "BashOutput": {
+        "description": "Get output from background bash",
+        "count": 147,
+        "input": {
+          "bash_id": { "type": "string", "required": true },
+          "timeout": { "type": "integer", "required": false }
+        }
+      },
+      "KillShell": {
+        "description": "Kill background shell",
+        "count": 54,
+        "input": {
+          "shell_id": { "type": "string", "required": true }
+        }
+      }
+    },
+    "agent_operations": {
+      "Task": {
+        "description": "Spawn sub-agent",
+        "count": 41,
+        "input": {
+          "description": { "type": "string", "required": true },
+          "prompt": { "type": "string", "required": true },
+          "subagent_type": { "type": "string", "required": true },
+          "model": { "type": "string", "enum": ["sonnet", "opus", "haiku"] },
+          "run_in_background": { "type": "boolean" },
+          "resume": { "type": "string", "description": "Agent ID to resume" }
+        }
+      },
+      "TaskOutput": {
+        "description": "Get task/agent output",
+        "count": 11,
+        "input": {
+          "task_id": { "type": "string", "required": true },
+          "block": { "type": "boolean", "default": true },
+          "timeout": { "type": "integer" }
+        }
+      }
+    },
+    "planning": {
+      "TodoWrite": {
+        "description": "Manage todo list",
+        "count": 338,
+        "input": {
+          "todos": {
+            "type": "array",
+            "items": {
+              "content": { "type": "string", "required": true },
+              "status": { "type": "string", "enum": ["pending", "in_progress", "completed"] },
+              "activeForm": { "type": "string", "required": true }
+            }
+          }
+        }
+      },
+      "EnterPlanMode": {
+        "description": "Enter planning mode",
+        "input": {}
+      },
+      "ExitPlanMode": {
+        "description": "Exit planning mode",
+        "count": 7,
+        "input": {
+          "launchSwarm": { "type": "boolean" },
+          "teammateCount": { "type": "integer" }
+        }
+      }
+    },
+    "web_operations": {
+      "WebFetch": {
+        "description": "Fetch and analyze web page",
+        "count": 10,
+        "input": {
+          "url": { "type": "string", "format": "uri", "required": true },
+          "prompt": { "type": "string", "required": true }
+        }
+      },
+      "WebSearch": {
+        "description": "Search the web",
+        "count": 58,
+        "input": {
+          "query": { "type": "string", "required": true },
+          "allowed_domains": { "type": "array", "items": "string" },
+          "blocked_domains": { "type": "array", "items": "string" }
+        }
+      }
+    },
+    "user_interaction": {
+      "AskUserQuestion": {
+        "description": "Ask user a question with options",
+        "count": 16,
+        "input": {
+          "questions": {
+            "type": "array",
+            "items": {
+              "question": { "type": "string", "required": true },
+              "header": { "type": "string", "required": true },
+              "options": { "type": "array", "required": true },
+              "multiSelect": { "type": "boolean", "required": true }
+            }
+          }
+        }
+      }
+    },
+    "mcp_tools": {
+      "description": "MCP (Model Context Protocol) tools are dynamic and prefixed with 'mcp__'",
+      "example": "mcp__happy__change_title",
+      "pattern": "mcp__<server>__<tool_name>"
+    }
+  },
+
+  "file_history_snapshot": {
+    "description": "Checkpoint for file undo/restore",
+    "schema": {
+      "type": "file-history-snapshot",
+      "messageId": { "type": "string", "format": "UUID" },
+      "isSnapshotUpdate": { "type": "boolean" },
+      "snapshot": {
+        "messageId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "ISO 8601" },
+        "trackedFileBackups": {
+          "type": "object",
+          "additionalProperties": {
+            "backupFileName": { "type": "string|null" },
+            "backupTime": { "type": "string" },
+            "version": { "type": "integer" }
+          }
+        }
+      }
+    }
+  },
+
+  "tool_use_result": {
+    "description": "Additional result metadata in user records",
+    "schema": {
+      "stdout": { "type": "string" },
+      "stderr": { "type": "string" },
+      "interrupted": { "type": "boolean" },
+      "isImage": { "type": "boolean" },
+      "status": { "type": "string", "description": "For Task results" },
+      "prompt": { "type": "string" },
+      "agentId": { "type": "string" },
+      "content": { "type": "array" }
+    }
+  },
+
+  "models": {
+    "claude-opus-4-5-20251101": { "count": 6137, "tier": "opus" },
+    "claude-sonnet-4-5-20250929": { "count": 3569, "tier": "sonnet" },
+    "claude-haiku-4-5-20251001": { "count": 1314, "tier": "haiku" },
+    "<synthetic>": { "count": 57, "description": "Synthetic/internal messages" }
+  },
+
+  "examples": {
+    "user_message": {
+      "type": "user",
+      "timestamp": "2025-12-14T15:14:05.200Z",
+      "sessionId": "689db5cd-e60e-45b4-a1bf-c876b242908c",
+      "uuid": "104c4cff-d197-4927-820d-9c6c39f33624",
+      "parentUuid": null,
+      "cwd": "/Users/ordishysa/project",
+      "gitBranch": "main",
+      "version": "2.0.65",
+      "userType": "external",
+      "isSidechain": false,
+      "message": {
+        "role": "user",
+        "content": "Hello, help me with this code"
+      }
+    },
+    "assistant_message": {
+      "type": "assistant",
+      "timestamp": "2025-12-14T15:14:12.497Z",
+      "sessionId": "689db5cd-e60e-45b4-a1bf-c876b242908c",
+      "uuid": "5046657b-fd75-4ae1-86d5-776e8b97db8c",
+      "parentUuid": "104c4cff-d197-4927-820d-9c6c39f33624",
+      "requestId": "req_011CW6oCZuEpkL5sM8hpedME",
+      "cwd": "/Users/ordishysa/project",
+      "gitBranch": "main",
+      "version": "2.0.65",
+      "userType": "external",
+      "isSidechain": false,
+      "message": {
+        "model": "claude-opus-4-5-20251101",
+        "id": "msg_01VwsxSShLhe49u4m9myiYzq",
+        "type": "message",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "I'll help you with that. Let me read the file first."
+          },
+          {
+            "type": "tool_use",
+            "id": "toolu_01Y4R48cFT6ZLjErTmqXPXJh",
+            "name": "Read",
+            "input": {
+              "file_path": "/Users/ordishysa/project/main.py"
+            }
+          }
+        ],
+        "stop_reason": "tool_use",
+        "usage": {
+          "input_tokens": 1500,
+          "output_tokens": 200,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 1200
+        }
+      }
+    },
+    "tool_result": {
+      "type": "user",
+      "timestamp": "2025-12-14T15:14:13.500Z",
+      "sessionId": "689db5cd-e60e-45b4-a1bf-c876b242908c",
+      "uuid": "abc123-...",
+      "parentUuid": "5046657b-...",
+      "message": {
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "toolu_01Y4R48cFT6ZLjErTmqXPXJh",
+            "content": "     1→def main():\n     2→    print('Hello')\n",
+            "is_error": false
+          }
+        ]
+      },
+      "toolUseResult": {
+        "stdout": "     1→def main():\n     2→    print('Hello')\n",
+        "stderr": "",
+        "interrupted": false,
+        "isImage": false
+      }
+    }
+  }
+}

@@ -1,28 +1,28 @@
 using System.Collections.Concurrent;
 using System.Reactive.Subjects;
-using System.Text.Json;
 using ClaudeCodeWrapper.Models;
+using ClaudeCodeWrapper.Models.Records;
 
 namespace ClaudeCodeWrapper.Core;
 
 /// <summary>
-/// Monitors Claude session logs and emits activities as they occur.
+/// Monitors Claude session logs and emits records as they occur.
 /// Implements IObservable for flexible event consumption using Reactive Extensions.
 ///
 /// Usage:
 /// <code>
 /// var monitor = new SessionMonitor(new SessionMonitorOptions { WorkingDirectory = "/path/to/project" });
-/// monitor.Subscribe(activity => Console.WriteLine($"{activity.Type}: {activity.ToolName}"));
+/// monitor.Subscribe(record => Console.WriteLine($"{record.Type}: {record.Uuid}"));
 /// monitor.Start();
 /// // ... execute Claude commands ...
 /// monitor.Stop();
 /// monitor.Dispose();
 /// </code>
 /// </summary>
-public class SessionMonitor : IObservable<SessionActivity>, IDisposable
+public class SessionMonitor : IObservable<SessionRecord>, IDisposable
 {
     private readonly SessionMonitorOptions _options;
-    private readonly Subject<SessionActivity> _subject = new();
+    private readonly Subject<SessionRecord> _subject = new();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _fileLocks = new();
 
     private FileSystemWatcher? _parentDirectoryWatcher;
@@ -66,14 +66,24 @@ public class SessionMonitor : IObservable<SessionActivity>, IDisposable
     public bool IsMonitoring => _isMonitoring;
 
     /// <summary>
+    /// Path to the current session file.
+    /// </summary>
+    public string? SessionFilePath => _sessionFilePath;
+
+    /// <summary>
+    /// All tracked files (main session + agents).
+    /// </summary>
+    public IReadOnlyCollection<string> TrackedFiles => _trackedFiles;
+
+    /// <summary>
     /// Raised when an error occurs during monitoring.
     /// </summary>
     public event EventHandler<Exception>? Error;
 
     /// <summary>
-    /// Subscribe to session activities.
+    /// Subscribe to session records.
     /// </summary>
-    public IDisposable Subscribe(IObserver<SessionActivity> observer)
+    public IDisposable Subscribe(IObserver<SessionRecord> observer)
     {
         return _subject.Subscribe(observer);
     }
@@ -109,7 +119,6 @@ public class SessionMonitor : IObservable<SessionActivity>, IDisposable
 
             if (!Directory.Exists(claudeProjectsDir))
             {
-                // Claude projects directory doesn't exist yet - nothing to watch
                 return;
             }
 
@@ -117,23 +126,20 @@ public class SessionMonitor : IObservable<SessionActivity>, IDisposable
 
             if (string.IsNullOrEmpty(_projectDirectory))
             {
-                // No working directory specified - can't derive project path
                 return;
             }
 
             if (Directory.Exists(_projectDirectory))
             {
                 StartWatchingProjectDirectory();
-                // Immediately scan for existing session files
                 ScanForSessionFiles();
             }
             else
             {
-                // Project directory doesn't exist yet - watch for its creation
                 WatchForProjectDirectoryCreation(claudeProjectsDir);
             }
 
-            // Start fallback polling timer immediately (dueTime=0) - FileSystemWatcher can be unreliable on macOS
+            // Start fallback polling timer - FileSystemWatcher can be unreliable on macOS
             _pollingTimer = new Timer(OnPollingTimerCallback, null, 0, PollingIntervalMs);
         }
         catch (Exception ex)
@@ -143,9 +149,35 @@ public class SessionMonitor : IObservable<SessionActivity>, IDisposable
     }
 
     /// <summary>
-    /// Immediately scan for session files in the project directory.
-    /// Called on Start() for fast initial detection.
+    /// Stop monitoring. Can be restarted with Start().
     /// </summary>
+    public void Stop()
+    {
+        _isMonitoring = false;
+        CleanupWatchers();
+    }
+
+    /// <summary>
+    /// Manually trigger reading of new lines from all tracked files.
+    /// </summary>
+    public async Task ReadNewRecordsAsync(CancellationToken cancellationToken = default)
+    {
+        var tasks = _trackedFiles.ToArray()
+            .Select(f => ReadNewLinesFromFileAsync(f, cancellationToken));
+        await Task.WhenAll(tasks);
+    }
+
+    /// <summary>
+    /// Get the full session once monitoring is complete.
+    /// </summary>
+    public async Task<Session?> GetSessionAsync(CancellationToken cancellationToken = default)
+    {
+        if (_currentSessionId == null) return null;
+
+        var repository = new SessionRepository(Path.GetDirectoryName(_options.GetClaudeProjectsPath()));
+        return await repository.LoadSessionAsync(_currentSessionId, cancellationToken);
+    }
+
     private void ScanForSessionFiles()
     {
         if (_projectDirectory == null || !Directory.Exists(_projectDirectory)) return;
@@ -177,16 +209,12 @@ public class SessionMonitor : IObservable<SessionActivity>, IDisposable
         }
     }
 
-    /// <summary>
-    /// Track a file for monitoring.
-    /// </summary>
     private void TrackFile(string file)
     {
         if (_trackedFiles.Add(file))
         {
             _filePositions[file] = 0;
 
-            // Set main session file if this looks like a session (UUID format, not agent-)
             var fileName = Path.GetFileNameWithoutExtension(file);
             if (!fileName.StartsWith("agent-") && _sessionFilePath == null)
             {
@@ -197,51 +225,27 @@ public class SessionMonitor : IObservable<SessionActivity>, IDisposable
         }
     }
 
-    /// <summary>
-    /// Fallback polling to detect new session files and changes.
-    /// This compensates for unreliable FileSystemWatcher on macOS.
-    /// </summary>
     private void OnPollingTimerCallback(object? state)
     {
         if (_disposed || !_isMonitoring) return;
 
         try
         {
-            // If we don't have a project directory yet, check if it was created
             if (_projectDirectory != null && !Directory.Exists(_projectDirectory))
             {
-                return; // Still waiting for directory creation
+                return;
             }
 
-            // Scan for new session files
             ScanForSessionFiles();
 
-            // Read new content from ALL tracked files in parallel
-            var tasks = _trackedFiles.ToArray().Select(f => ReadNewLinesFromFileAsync(f, CancellationToken.None));
+            var tasks = _trackedFiles.ToArray()
+                .Select(f => ReadNewLinesFromFileAsync(f, CancellationToken.None));
             Task.WhenAll(tasks).ConfigureAwait(false);
         }
         catch
         {
-            // Ignore polling errors - will retry on next interval
+            // Ignore polling errors
         }
-    }
-
-    /// <summary>
-    /// Stop monitoring. Can be restarted with Start().
-    /// </summary>
-    public void Stop()
-    {
-        _isMonitoring = false;
-        CleanupWatchers();
-    }
-
-    /// <summary>
-    /// Manually trigger reading of new lines from the session file.
-    /// Useful when you know new content has been written.
-    /// </summary>
-    public async Task ReadNewActivitiesAsync(CancellationToken cancellationToken = default)
-    {
-        await ReadNewLinesAsync(cancellationToken);
     }
 
     private void StartWatchingSession(string sessionId)
@@ -251,7 +255,6 @@ public class SessionMonitor : IObservable<SessionActivity>, IDisposable
         if (!Directory.Exists(claudeProjectsDir))
             return;
 
-        // Search for the session log file
         var sessionFiles = Directory.GetFiles(claudeProjectsDir, $"{sessionId}.jsonl", SearchOption.AllDirectories);
         _sessionFilePath = sessionFiles.FirstOrDefault();
 
@@ -260,13 +263,11 @@ public class SessionMonitor : IObservable<SessionActivity>, IDisposable
 
         _currentSessionId = sessionId;
 
-        // Read existing content if requested
         if (_options.IncludeExistingContent)
         {
-            _ = ReadNewLinesAsync(CancellationToken.None);
+            _ = ReadNewLinesFromFileAsync(_sessionFilePath, CancellationToken.None);
         }
 
-        // Watch for changes
         var directory = Path.GetDirectoryName(_sessionFilePath)!;
         var fileName = Path.GetFileName(_sessionFilePath);
 
@@ -307,7 +308,6 @@ public class SessionMonitor : IObservable<SessionActivity>, IDisposable
     {
         if (_projectDirectory == null || _disposed || !_isMonitoring) return;
 
-        // Watch for new .jsonl files in this directory
         _projectDirectoryWatcher = new FileSystemWatcher(_projectDirectory, "*.jsonl")
         {
             NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName
@@ -324,16 +324,13 @@ public class SessionMonitor : IObservable<SessionActivity>, IDisposable
 
         try
         {
-            // Only process files created AFTER we started watching (with tolerance for race conditions)
             var fileInfo = new FileInfo(e.FullPath);
             var toleranceTime = _watchStartTime.AddSeconds(-_options.NewFileToleranceSeconds);
 
             if (fileInfo.CreationTimeUtc < toleranceTime)
-                return; // Ignore old file
+                return;
 
             TrackFile(e.FullPath);
-
-            // Read initial content
             _ = ReadNewLinesFromFileAsync(e.FullPath, CancellationToken.None);
         }
         catch (Exception ex)
@@ -346,7 +343,6 @@ public class SessionMonitor : IObservable<SessionActivity>, IDisposable
     {
         if (_disposed || !_isMonitoring) return;
 
-        // Track this file if not already tracked (handles case where Created event was missed)
         if (!_trackedFiles.Contains(e.FullPath))
         {
             try
@@ -355,39 +351,30 @@ public class SessionMonitor : IObservable<SessionActivity>, IDisposable
                 var toleranceTime = _watchStartTime.AddSeconds(-_options.NewFileToleranceSeconds);
 
                 if (fileInfo.CreationTimeUtc < toleranceTime)
-                    return; // Old file, ignore
+                    return;
 
                 TrackFile(e.FullPath);
             }
             catch
             {
-                return; // File access error, ignore
+                return;
             }
         }
 
-        // Read new content from this specific file
         _ = ReadNewLinesFromFileAsync(e.FullPath, CancellationToken.None);
-    }
-
-    private async Task ReadNewLinesAsync(CancellationToken cancellationToken)
-    {
-        if (_sessionFilePath == null || _disposed || !_isMonitoring) return;
-        await ReadNewLinesFromFileAsync(_sessionFilePath, cancellationToken);
     }
 
     private async Task ReadNewLinesFromFileAsync(string filePath, CancellationToken cancellationToken)
     {
         if (_disposed || !_isMonitoring || !File.Exists(filePath)) return;
 
-        // Per-file lock to allow parallel reads of different files
         var fileLock = _fileLocks.GetOrAdd(filePath, _ => new SemaphoreSlim(1, 1));
 
         if (!await fileLock.WaitAsync(0, cancellationToken))
-            return; // Another read in progress for this file
+            return;
 
         try
         {
-            // Get or initialize file position
             if (!_filePositions.TryGetValue(filePath, out var lastPosition))
             {
                 lastPosition = 0;
@@ -413,16 +400,15 @@ public class SessionMonitor : IObservable<SessionActivity>, IDisposable
             {
                 if (string.IsNullOrWhiteSpace(line)) continue;
 
-                // Parse the JSONL line
-                foreach (var activity in ParseJsonLine(line))
+                var record = SessionRecordParser.Parse(line);
+                if (record != null)
                 {
-                    _subject.OnNext(activity);
+                    _subject.OnNext(record);
                 }
             }
 
             _filePositions[filePath] = fs.Position;
 
-            // Also update legacy _lastPosition for main session file
             if (filePath == _sessionFilePath)
             {
                 _lastPosition = fs.Position;
@@ -459,128 +445,6 @@ public class SessionMonitor : IObservable<SessionActivity>, IDisposable
     }
 
     /// <summary>
-    /// Parse a JSONL line into activities.
-    /// </summary>
-    private static IEnumerable<SessionActivity> ParseJsonLine(string line)
-    {
-        if (string.IsNullOrWhiteSpace(line)) yield break;
-
-        JsonDocument? doc = null;
-        try
-        {
-            doc = JsonDocument.Parse(line);
-            var root = doc.RootElement;
-
-            var type = root.TryGetProperty("type", out var t) ? t.GetString() : null;
-            var timestamp = root.TryGetProperty("timestamp", out var ts) ? ts.GetString() ?? "" : "";
-            var sessionId = root.TryGetProperty("sessionId", out var sid) ? sid.GetString() : null;
-            var uuid = root.TryGetProperty("uuid", out var u) ? u.GetString() : null;
-            var parentUuid = root.TryGetProperty("parentUuid", out var pu) ? pu.GetString() : null;
-
-            // Check for subagent
-            string? agentId = null;
-            bool isSidechain = false;
-            if (root.TryGetProperty("agentId", out var aid))
-            {
-                agentId = aid.GetString();
-                isSidechain = !string.IsNullOrEmpty(agentId);
-            }
-
-            if (type == "assistant" && root.TryGetProperty("message", out var msg))
-            {
-                if (msg.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var item in content.EnumerateArray())
-                    {
-                        var itemType = item.TryGetProperty("type", out var it) ? it.GetString() : null;
-
-                        if (itemType == "tool_use")
-                        {
-                            var toolName = item.TryGetProperty("name", out var n) ? n.GetString() : null;
-                            var toolId = item.TryGetProperty("id", out var id) ? id.GetString() : null;
-                            string? toolInput = null;
-
-                            if (item.TryGetProperty("input", out var inp))
-                            {
-                                toolInput = inp.ValueKind == JsonValueKind.String
-                                    ? inp.GetString()
-                                    : inp.GetRawText();
-                            }
-
-                            yield return SessionActivity.ToolCall(
-                                toolName ?? "unknown",
-                                toolInput,
-                                timestamp,
-                                sessionId,
-                                uuid,
-                                parentUuid,
-                                toolId,
-                                null,
-                                agentId,
-                                isSidechain);
-                        }
-                        else if (itemType == "text")
-                        {
-                            var text = item.TryGetProperty("text", out var txt) ? txt.GetString() : null;
-                            if (!string.IsNullOrEmpty(text))
-                            {
-                                yield return SessionActivity.Thought(
-                                    text,
-                                    timestamp,
-                                    sessionId,
-                                    uuid,
-                                    parentUuid,
-                                    null,
-                                    agentId,
-                                    isSidechain);
-                            }
-                        }
-                    }
-                }
-            }
-            else if (type == "user" && root.TryGetProperty("message", out var userMsg))
-            {
-                if (userMsg.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var item in content.EnumerateArray())
-                    {
-                        var itemType = item.TryGetProperty("type", out var it) ? it.GetString() : null;
-
-                        if (itemType == "tool_result")
-                        {
-                            var toolId = item.TryGetProperty("tool_use_id", out var tid) ? tid.GetString() : null;
-                            var isError = item.TryGetProperty("is_error", out var ie) && ie.GetBoolean();
-                            string? resultContent = null;
-
-                            if (item.TryGetProperty("content", out var rc))
-                            {
-                                resultContent = rc.ValueKind == JsonValueKind.String
-                                    ? rc.GetString()
-                                    : rc.GetRawText();
-                            }
-
-                            yield return SessionActivity.ToolResult(
-                                resultContent,
-                                !isError,
-                                timestamp,
-                                sessionId,
-                                uuid,
-                                parentUuid,
-                                toolId,
-                                agentId,
-                                isSidechain);
-                        }
-                    }
-                }
-            }
-        }
-        finally
-        {
-            doc?.Dispose();
-        }
-    }
-
-    /// <summary>
     /// Dispose and release all resources.
     /// </summary>
     public void Dispose()
@@ -591,7 +455,6 @@ public class SessionMonitor : IObservable<SessionActivity>, IDisposable
         _isMonitoring = false;
         CleanupWatchers();
 
-        // Dispose per-file locks
         foreach (var fileLock in _fileLocks.Values)
             fileLock.Dispose();
         _fileLocks.Clear();

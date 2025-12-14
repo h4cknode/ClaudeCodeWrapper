@@ -1,5 +1,71 @@
 # Changelog
 
+## v1.2.0 - Full Session Schema Support
+
+Complete rewrite of session handling to support the full Claude Code session schema.
+
+### Added
+
+- **Session aggregate**: Load complete sessions with all related data
+  - `LoadSessionAsync()` - Load a session by ID
+  - `SendWithSessionAsync()` - Execute and get full session object
+  - `ListSessions()` - List all sessions
+  - `GetSessionRepository()` - Direct repository access
+
+- **SessionRepository**: Access all session-related files
+  - Main session file (`.jsonl`)
+  - Sub-agent files (`agent-*.jsonl`)
+  - Todo files (`~/.claude/todos/`)
+  - File history backups (`~/.claude/file-history/`)
+  - Debug logs (`~/.claude/debug/`)
+
+- **SessionRecordParser**: Full JSONL parsing for all record types
+
+- **New record types**:
+  - `UserRecord` - User messages and tool results
+  - `AssistantRecord` - AI responses with content blocks and usage
+  - `SummaryRecord` - Conversation summaries
+  - `SystemRecord` - System messages and metadata
+  - `QueueOperationRecord` - Queue management
+  - `FileHistorySnapshotRecord` - File checkpoints for undo
+
+- **Content block types**:
+  - `TextBlock` - Plain text response
+  - `ThinkingBlock` - Extended thinking/reasoning
+  - `ToolUseBlock` - Tool invocation with typed input
+  - `ToolResultBlock` - Tool execution result
+  - `ImageBlock` - Base64 encoded images
+
+- **TokenUsage**: Detailed token tracking
+  - Input/output tokens
+  - Cache creation/read tokens
+  - Cache hit rate calculation
+  - Server tool use (web search, web fetch)
+
+- **Session computed properties**:
+  - `TotalTokens`, `TotalInputTokens`, `TotalOutputTokens`
+  - `TotalCacheReadTokens`, `AverageCacheHitRate`
+  - `ToolUsageCounts`, `ModelUsage`
+  - `TotalWebSearchRequests`, `TotalWebFetchRequests`
+  - `ModifiedFiles`, `HasErrors`
+  - `GetThread()`, `GetChildren()`, `RootMessages`
+
+- **New streaming methods**:
+  - `StreamRecordsAsync()` - Stream raw SessionRecord objects
+  - `StreamRecordsWithResponseAsync()` - Stream records with Response
+
+### Changed
+
+- `SessionMonitor` now emits `SessionRecord` instead of `SessionActivity`
+- `Activity` now created from `SessionRecord` via `Activity.FromRecord()`
+- `Activity` includes `OriginalRecord` reference for full access
+
+### Removed
+
+- `SessionActivity` class (replaced by `SessionRecord` hierarchy)
+
+---
+
 ## v1.1.0 - Usage Monitoring & Error Handling
 
 ### Added
