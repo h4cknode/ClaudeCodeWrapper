@@ -2,7 +2,10 @@
 
 C# wrapper for **Claude Code CLI** with full session support.
 
+[![CI Build](https://github.com/hysaordis/ClaudeCodeWrapper/actions/workflows/ci.yml/badge.svg)](https://github.com/hysaordis/ClaudeCodeWrapper/actions/workflows/ci.yml)
+[![Release](https://github.com/hysaordis/ClaudeCodeWrapper/actions/workflows/release.yml/badge.svg)](https://github.com/hysaordis/ClaudeCodeWrapper/actions/workflows/release.yml)
 [![NuGet](https://img.shields.io/nuget/v/ClaudeCodeWrapper.svg)](https://www.nuget.org/packages/ClaudeCodeWrapper)
+[![NuGet Downloads](https://img.shields.io/nuget/dt/ClaudeCodeWrapper.svg)](https://www.nuget.org/packages/ClaudeCodeWrapper)
 
 ## Requirements
 
