@@ -636,6 +636,12 @@ public class ClaudeCode : IDisposable
         if (_options.DisallowedTools.Count > 0)
             args.Add($"--disallowed-tools \"{string.Join(",", _options.DisallowedTools)}\"");
 
+        if (!string.IsNullOrEmpty(_options.McpConfigPath))
+            args.Add($"--mcp-config \"{_options.McpConfigPath}\"");
+
+        if (!string.IsNullOrEmpty(_options.PermissionPromptTool))
+            args.Add($"--permission-prompt-tool {_options.PermissionPromptTool}");
+
         if (!string.IsNullOrEmpty(_options.ResumeSessionId))
             args.Add($"-r \"{_options.ResumeSessionId}\"");
 

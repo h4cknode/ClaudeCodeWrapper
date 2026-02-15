@@ -7,7 +7,7 @@
 
     <!-- NuGet Package Metadata -->
     <PackageId>ClaudeCodeWrapper</PackageId>
-    <Version>1.4.0</Version>
+    <Version>1.5.0</Version>
     <Authors>Ordis Hysa</Authors>
     <Company>Ordis Hysa</Company>
     <Description>C# wrapper for Claude Code CLI. Requires Claude Code CLI installed (npm install -g @anthropic-ai/claude-code). Simple API: Initialize, Send, Stream with real-time activity monitoring.</Description>
@@ -18,7 +18,7 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>claude;anthropic;ai;llm;cli;agent;wrapper;claude-code</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>v1.4.0: Added ResumeWithRecordsStreamingAsync for full tool_use/tool_result streaming, fixed async callback handling with Task.WhenAll, SessionId passed to monitor for resume scenarios.</PackageReleaseNotes>
+    <PackageReleaseNotes>v1.5.0: Added McpConfigPath and PermissionPromptTool options for MCP server integration and interactive permission handling via --mcp-config and --permission-prompt-tool CLI flags.</PackageReleaseNotes>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <RootNamespace>ClaudeCodeWrapper</RootNamespace>

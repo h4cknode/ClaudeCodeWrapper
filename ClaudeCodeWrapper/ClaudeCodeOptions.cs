@@ -52,6 +52,19 @@ public class ClaudeCodeOptions
     public List<string> DisallowedTools { get; set; } = new();
 
     /// <summary>
+    /// Path to MCP server configuration file (JSON).
+    /// When set, passes --mcp-config to Claude CLI.
+    /// </summary>
+    public string? McpConfigPath { get; set; }
+
+    /// <summary>
+    /// MCP tool name to use for permission prompts (e.g., "mcp__server__tool_name").
+    /// When set, passes --permission-prompt-tool to Claude CLI.
+    /// Requires McpConfigPath to be set.
+    /// </summary>
+    public string? PermissionPromptTool { get; set; }
+
+    /// <summary>
     /// Environment variables to pass to Claude.
     /// </summary>
     public Dictionary<string, string> EnvironmentVariables { get; set; } = new();
